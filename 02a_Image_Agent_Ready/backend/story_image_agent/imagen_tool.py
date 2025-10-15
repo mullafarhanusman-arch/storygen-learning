@@ -15,80 +15,13 @@ from datetime import datetime
 load_dotenv()
 
 
-class ImagenTool(BaseTool):
+class ImagenTool:
     """
     Custom ADK tool for generating images using Google Vertex AI Imagen.
     Automatically stores images in GCS bucket to avoid MCP token payload issues.
     """
     
-    def __init__(self, project_id: str = None, location: str = "us-central1"):
-        super().__init__(
-            name="generate_image",
-            description="Generate cartoon-style images (bold outlines, vibrant flat colors, minimal background) using Google Vertex AI Imagen with automatic bucket storage"
-        )
-        
-        self._project_id = project_id or os.getenv("GOOGLE_CLOUD_PROJECT") or os.getenv("GOOGLE_CLOUD_PROJECT_ID")
-        self._location = location
-        self._bucket_name = os.getenv("GENMEDIA_BUCKET")
-        
-        if not self._project_id:
-            raise ValueError("Google Cloud Project ID not configured. Please set GOOGLE_CLOUD_PROJECT or GOOGLE_CLOUD_PROJECT_ID environment variable.")
-        
-        if not self._bucket_name:
-            print("⚠️  Warning: GENMEDIA_BUCKET not set. Images will be returned as base64 payloads which may cause token issues.")
-        
-        # Initialize Vertex AI
-        vertexai.init(project=self._project_id, location=self._location)
-        self._model = ImageGenerationModel.from_pretrained("imagegeneration@006")
-        
-        # Initialize GCS client if bucket is configured
-        self._storage_client = None
-        if self._bucket_name:
-            try:
-                creds_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-                if creds_path and os.path.exists(creds_path):
-                    credentials = service_account.Credentials.from_service_account_file(creds_path)
-                    self._storage_client = storage.Client(credentials=credentials, project=self._project_id)
-                else:
-                    # Try default credentials
-                    self._storage_client = storage.Client(project=self._project_id)
-                print(f"✅ GCS client initialized for bucket: {self._bucket_name}")
-            except Exception as e:
-                print(f"⚠️  Failed to initialize GCS client: {e}")
-                self._storage_client = None
-    
-    def get_json_schema(self) -> Dict[str, Any]:
-        """Return the JSON schema for this tool's parameters."""
-        return {
-            "type": "object",
-            "properties": {
-                "prompt": {
-                    "type": "string",
-                    "description": "Detailed text description of the image to generate"
-                },
-                "negative_prompt": {
-                    "type": "string", 
-                    "description": "What to avoid in the image (optional)",
-                    "default": "photorealistic, realistic, blurry, low quality, watermark, text overlay"
-                },
-                "aspect_ratio": {
-                    "type": "string",
-                    "description": "Image aspect ratio",
-                    "enum": ["1:1", "9:16", "16:9", "4:3", "3:4"],
-                    "default": "16:9"
-                },
-                "number_of_images": {
-                    "type": "integer",
-                    "description": "Number of images to generate (1-4)",
-                    "minimum": 1,
-                    "maximum": 4,
-                    "default": 1
-                }
-            },
-            "required": ["prompt"]
-        }
-    
-    async def run(self, ctx: ToolContext, **kwargs) -> str:
+    async def run(self, prompt: str, **kwargs) -> str:
         """Generate an image using Vertex AI Imagen and store in GCS bucket."""
         try:
             prompt = kwargs.get("prompt", "")
@@ -193,6 +126,7 @@ class ImagenTool(BaseTool):
                 "success": False,
                 "error": f"Image generation failed: {str(e)}"
             })
+    
 
     def _upload_to_bucket(self, local_path: str, prompt: str, index: int) -> str:
         """Upload image to GCS bucket and return public URL."""
@@ -218,5 +152,7 @@ class ImagenTool(BaseTool):
         # Make the blob publicly readable
         blob.make_public()
         
+        # Don't use make_public() with uniform bucket-level access
+        # Instead, assume the bucket is already public or use the public URL format
         # Return public HTTPS URL for browser display
         return blob.public_url

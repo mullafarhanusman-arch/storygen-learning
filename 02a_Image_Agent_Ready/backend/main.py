@@ -21,7 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from story_agent.agent import root_agent as story_agent
-from story_image_agent.agent import root_agent as image_agent  # New image agent
+from story_image_agent.agent import CustomImageAgent  # New image agent
 
 # Load environment variables
 load_dotenv()
@@ -59,6 +59,7 @@ if project_id:
         story_runner = InMemoryRunner(app_name=APP_NAME, agent=story_agent)
 
         # Initialize new image agent runner
+        image_agent = CustomImageAgent()
         image_runner = InMemoryRunner(app_name=APP_NAME, agent=image_agent)
 
         print("✅ New Architecture initialized: StoryAgent + CustomImageAgent")
@@ -190,19 +191,20 @@ async def run_new_agent_workflow(websocket: WebSocket, user_id: str, keywords: s
                 image_content = Content(role="user", parts=[Part(text=json.dumps(prompt_data))])
 
                 # Process all events from the custom agent
-                image_data_str = ""
                 async for event in image_runner.run_async(
                     user_id=f"{user_id}_image",
                     session_id=image_session.id,
                     new_message=image_content
                 ):
-                    logger.info(f"📥 Event from CustomImageAgent: {event.author if hasattr(event, 'author') else 'unknown'}")
-                    if event.content and event.content.parts:
-                        for part in event.content.parts:
-                            if part.text:
-                                image_data_str += part.text
+                    logger.info(f"📥 Event from CustomImageAgent: {event.type}")
 
-                # After the loop, parse the accumulated string
+                # After the loop, retrieve the result from the session state
+                image_session = await image_runner.session_service.get_session(
+                    app_name=APP_NAME,
+                    user_id=f"{user_id}_image",
+                    session_id=image_session.id
+                )
+                image_data_str = image_session.state.get("image_result")
                 if image_data_str:
                     try:
                         image_data = json.loads(image_data_str)
