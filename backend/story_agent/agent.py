@@ -7,7 +7,7 @@ tools = []
 print("Initializing Story Agent...")
 
 story_agent = LlmAgent(
-    model="gemini-pro",
+    model="gemini-2.5-pro",
     name="story_agent",
     description="Generates creative short stories and accompanying visual keyframes based on user-provided keywords and themes.",
     instructions="""You are a creative assistant for a children's storybook app.
